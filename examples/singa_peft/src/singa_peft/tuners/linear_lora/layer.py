@@ -87,3 +87,43 @@ class LinearLoRALayer(layer.Layer):
         if self.base_layer.b is not None:
             self.base_layer.b.requires_grad = not freeze
             self.base_layer.b.stores_grad = not freeze
+
+    def forward(self, x):
+        # forward
+        if not self.merged:
+            y1 = self.base_layer(x)
+            y2 = autograd.dropout(x, self.lora_dropout)
+            y2 = autograd.matmul(y2, autograd.transpose(self.lora_A, (1, 0)))
+            y2 = autograd.matmul(y2, autograd.transpose(self.lora_B, (1, 0)))
+            y2 = autograd.mul(y2, self.scaling)
+            y = autograd.add(y1, y2)
+            return y
+        else:
+            y = self.base_layer(x)
+            return y
+
+    def merge_weights(self, mode: bool = True):
+        # Merge the weights
+        if mode:
+            if not self.merged:
+                # Merge the weights and mark it
+                delta = tensor.mult(self.lora_A.transpose((1, 0)), self.lora_B.transpose((1, 0))) * self.scaling
+                self.base_layer.W.data += delta.data
+                self.merged = True
+        else:
+            if self.merged:
+                # Make sure that the weights are not merged
+                delta = tensor.mult(self.lora_A.transpose((1, 0)), self.lora_B.transpose((1, 0))) * self.scaling
+                self.base_layer.W.data -= delta.data
+                self.merged = False
+
+    def get_params(self):
+        params = self.base_layer.get_params()
+        params[self.lora_A.name] = self.lora_A
+        params[self.lora_B.name] = self.lora_B
+        return params
+
+    def set_params(self, parameters):
+        self.base_layer.set_params(parameters)
+        self.lora_A.copy_from(parameters[self.lora_A.name])
+        self.lora_B.copy_from(parameters[self.lora_B.name])
