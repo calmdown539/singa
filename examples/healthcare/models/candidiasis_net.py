@@ -48,6 +48,25 @@ class candidiasisnet(model.Model):
         y = self.linear2(y)
         return y
 
+    def train_one_batch(self, x, y, dist_option, spars):
+        out = self.forward(x)
+        loss = self.softmax_cross_entropy(out, y)
+
+        if dist_option == 'plain':
+            self.optimizer(loss)
+        elif dist_option == 'half':
+            self.optimizer.backward_and_update_half(loss)
+        elif dist_option == 'partialUpdate':
+            self.optimizer.backward_and_partial_update(loss)
+        elif dist_option == 'sparseTopK':
+            self.optimizer.backward_and_sparse_update(loss,
+                                                      topK=True,
+                                                      spars=spars)
+        elif dist_option == 'sparseThreshold':
+            self.optimizer.backward_and_sparse_update(loss,
+                                                      topK=False,
+                                                      spars=spars)
+        return out, loss
 
     def set_optimizer(self, optimizer):
         self.optimizer = optimizer
