@@ -146,3 +146,75 @@ def run(global_rank,
                   flush=True)
 
     dev.PrintTimeProfiling()
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description='Training using the autograd and graph.')
+    parser.add_argument(
+        'model',
+        choices=['cnn', 'resnet', 'xceptionnet', 'mlp', 'alexnet', 'candidiasisnet'],
+        default='candidiasisnet')
+    parser.add_argument('data',
+                        choices=['mnist', 'cifar10', 'cifar100', 'candidiasis'],
+                        default='candidiasis')
+    parser.add_argument('-p',
+                        choices=['float32', 'float16'],
+                        default='float32',
+                        dest='precision')
+    parser.add_argument('-m',
+                        '--max-epoch',
+                        default=100,
+                        type=int,
+                        help='maximum epochs',
+                        dest='max_epoch')
+    parser.add_argument('-b',
+                        '--batch-size',
+                        default=64,
+                        type=int,
+                        help='batch size',
+                        dest='batch_size')
+    parser.add_argument('-l',
+                        '--learning-rate',
+                        default=0.005,
+                        type=float,
+                        help='initial learning rate',
+                        dest='lr')
+    parser.add_argument('-i',
+                        '--device-id',
+                        default=0,
+                        type=int,
+                        help='which GPU to use',
+                        dest='device_id')
+    parser.add_argument('-g',
+                        '--disable-graph',
+                        default='True',
+                        action='store_false',
+                        help='disable graph',
+                        dest='graph')
+    parser.add_argument('-v',
+                        '--log-verbosity',
+                        default=0,
+                        type=int,
+                        help='logging verbosity',
+                        dest='verbosity')
+    parser.add_argument('-dir',
+                        '--dir-path',
+                        type=str,
+                        help='the directory to store the candidiasis dataset',
+                        dest='dir_path')
+
+    args = parser.parse_args()
+
+    sgd = opt.SGD(lr=args.lr, momentum=0.9, weight_decay=1e-5, dtype=singa_dtype[args.precision])
+    run(0,
+        1,
+        args.device_id,
+        args.max_epoch,
+        args.batch_size,
+        args.model,
+        args.data,
+        sgd,
+        args.graph,
+        args.verbosity,
+        precision=args.precision,
+        dir_path=args.dir_path)
