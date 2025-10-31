@@ -87,3 +87,56 @@ class CharRNN(model.Model):
         self.hx.copy_from(states[self.hx.name])
         self.hx.copy_from(states[self.hx.name])
         super().set_states(states)
+
+class Data(object):
+
+    def __init__(self, fpath, batch_size=32, seq_length=100, train_ratio=0.8):
+        '''Data object for loading a plain text file.
+
+        Args:
+            fpath, path to the text file.
+            train_ratio, split the text file into train and test sets, where
+                train_ratio of the characters are in the train set.
+        '''
+        self.raw_data = open(fpath, 'r',
+                             encoding='iso-8859-1').read()  # read text file
+        chars = list(set(self.raw_data))
+        self.vocab_size = len(chars)
+        self.char_to_idx = {ch: i for i, ch in enumerate(chars)}
+        self.idx_to_char = {i: ch for i, ch in enumerate(chars)}
+        data = [self.char_to_idx[c] for c in self.raw_data]
+        # seq_length + 1 for the data + label
+        nsamples = len(data) // (1 + seq_length)
+        data = data[0:nsamples * (1 + seq_length)]
+        data = np.asarray(data, dtype=np.int32)
+        data = np.reshape(data, (-1, seq_length + 1))
+        # shuffle all sequences
+        np.random.shuffle(data)
+        self.train_dat = data[0:int(data.shape[0] * train_ratio)]
+        self.num_train_batch = self.train_dat.shape[0] // batch_size
+        self.val_dat = data[self.train_dat.shape[0]:]
+        self.num_test_batch = self.val_dat.shape[0] // batch_size
+        print('train dat', self.train_dat.shape)
+        print('val dat', self.val_dat.shape)
+
+
+def numpy2tensors(npx, npy, dev, inputs=None, labels=None):
+    '''batch, seq, dim -- > seq, batch, dim'''
+    tmpy = np.swapaxes(npy, 0, 1).reshape((-1, 1))
+    if labels:
+        labels.copy_from_numpy(tmpy)
+    else:
+        labels = tensor.from_numpy(tmpy)
+    labels.to_device(dev)
+    tmpx = np.swapaxes(npx, 0, 1)
+    inputs_ = []
+    for t in range(tmpx.shape[0]):
+        if inputs:
+            inputs[t].copy_from_numpy(tmpx[t])
+        else:
+            x = tensor.from_numpy(tmpx[t])
+            x.to_device(dev)
+            inputs_.append(x)
+    if not inputs:
+        inputs = inputs_
+    return inputs, labels
