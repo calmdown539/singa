@@ -140,3 +140,69 @@ def numpy2tensors(npx, npy, dev, inputs=None, labels=None):
     if not inputs:
         inputs = inputs_
     return inputs, labels
+
+
+def convert(batch,
+            batch_size,
+            seq_length,
+            vocab_size,
+            dev,
+            inputs=None,
+            labels=None):
+    '''convert a batch of data into a sequence of input tensors'''
+    y = batch[:, 1:]
+    x1 = batch[:, :seq_length]
+    x = np.zeros((batch_size, seq_length, vocab_size), dtype=np.float32)
+    for b in range(batch_size):
+        for t in range(seq_length):
+            c = x1[b, t]
+            x[b, t, c] = 1
+    return numpy2tensors(x, y, dev, inputs, labels)
+
+
+def sample(model, data, dev, nsamples=100, use_max=False):
+    while True:
+        cmd = input('Do you want to sample text from the model [y/n]')
+        if cmd == 'n':
+            return
+        else:
+            seed = input('Please input some seeding text, e.g., #include <c: ')
+            inputs = []
+            for c in seed:
+                x = np.zeros((1, data.vocab_size), dtype=np.float32)
+                x[0, data.char_to_idx[c]] = 1
+                tx = tensor.from_numpy(x)
+                tx.to_device(dev)
+                inputs.append(tx)
+            model.reset_states(dev)
+            outputs = model(inputs)
+            y = tensor.softmax(outputs[-1])
+            sys.stdout.write(seed)
+            for i in range(nsamples):
+                prob = tensor.to_numpy(y)[0]
+                if use_max:
+                    cur = np.argmax(prob)
+                else:
+                    cur = np.random.choice(data.vocab_size, 1, p=prob)[0]
+                sys.stdout.write(data.idx_to_char[cur])
+                x = np.zeros((1, data.vocab_size), dtype=np.float32)
+                x[0, cur] = 1
+                tx = tensor.from_numpy(x)
+                tx.to_device(dev)
+                outputs = model([tx])
+                y = tensor.softmax(outputs[-1])
+
+
+def evaluate(model, data, batch_size, seq_length, dev, inputs, labels):
+    model.eval()
+    val_loss = 0.0
+    for b in range(data.num_test_batch):
+        batch = data.val_dat[b * batch_size:(b + 1) * batch_size]
+        inputs, labels = convert(batch, batch_size, seq_length, data.vocab_size,
+                                 dev, inputs, labels)
+        model.reset_states(dev)
+        y = model(inputs)
+        loss = autograd.softmax_cross_entropy(y, labels)[0]
+        val_loss += tensor.to_numpy(loss)[0]
+    print('            validation loss is %f' %
+          (val_loss / data.num_test_batch / seq_length))
