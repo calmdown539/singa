@@ -88,6 +88,7 @@ class CharRNN(model.Model):
         self.hx.copy_from(states[self.hx.name])
         super().set_states(states)
 
+
 class Data(object):
 
     def __init__(self, fpath, batch_size=32, seq_length=100, train_ratio=0.8):
@@ -206,3 +207,52 @@ def evaluate(model, data, batch_size, seq_length, dev, inputs, labels):
         val_loss += tensor.to_numpy(loss)[0]
     print('            validation loss is %f' %
           (val_loss / data.num_test_batch / seq_length))
+
+
+def train(data,
+          max_epoch,
+          hidden_size=100,
+          seq_length=100,
+          batch_size=16,
+          model_path='model'):
+    # SGD with L2 gradient normalization
+    cuda = device.create_cuda_gpu()
+    model = CharRNN(data.vocab_size, hidden_size)
+    model.graph(True, False)
+
+    inputs, labels = None, None
+
+    for epoch in range(max_epoch):
+        model.train()
+        train_loss = 0
+        for b in tqdm(range(data.num_train_batch)):
+            batch = data.train_dat[b * batch_size:(b + 1) * batch_size]
+            inputs, labels = convert(batch, batch_size, seq_length,
+                                     data.vocab_size, cuda, inputs, labels)
+            out, loss = model(inputs, labels)
+            model.reset_states(cuda)
+            train_loss += tensor.to_numpy(loss)[0]
+
+        print('\nEpoch %d, train loss is %f' %
+              (epoch, train_loss / data.num_train_batch / seq_length))
+
+        evaluate(model, data, batch_size, seq_length, cuda, inputs, labels)
+        sample(model, data, cuda)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description='Train multi-stack LSTM for '
+        'modeling  character sequence from plain text files')
+    parser.add_argument('data', type=str, help='training file')
+    parser.add_argument('-b', type=int, default=32, help='batch_size')
+    parser.add_argument('-l', type=int, default=64, help='sequence length')
+    parser.add_argument('-d', type=int, default=128, help='hidden size')
+    parser.add_argument('-m', type=int, default=50, help='max num of epoch')
+    args = parser.parse_args()
+    data = Data(args.data, batch_size=args.b, seq_length=args.l)
+    train(data,
+          args.m,
+          hidden_size=args.d,
+          seq_length=args.l,
+          batch_size=args.b)
